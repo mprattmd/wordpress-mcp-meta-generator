@@ -7,6 +7,9 @@ jQuery(document).ready(function($) {
         return;
     }
 
+    // Test connection on page load
+    testConnection();
+
     // Analyze Content button
     $('#mcp-analyze-content').on('click', function() {
         var $button = $(this);
@@ -71,7 +74,7 @@ jQuery(document).ready(function($) {
         });
     });
 
-    // Apply to Yoast button
+    // Apply to Yoast button - Enhanced version
     $(document).on('click', '#mcp-apply-meta', function() {
         var generatedMeta = $('#mcp-generated-meta').val();
         
@@ -80,38 +83,112 @@ jQuery(document).ready(function($) {
             return;
         }
         
-        // Try different Yoast SEO selectors (they change between versions)
+        console.log('Attempting to apply meta description:', generatedMeta);
+        
+        // Comprehensive list of Yoast SEO selectors
         var yoastSelectors = [
-            '#yoast_wpseo_metadesc',  // Classic editor
-            '[name="yoast_wpseo_metadesc"]',  // Alternative
-            '#snippet-editor-meta-description',  // Block editor
-            '.yoast-field-group__inputfield[name*="metadesc"]',  // Gutenberg
-            'textarea[name="yoast_wpseo_metadesc"]'  // Fallback
+            // Classic Editor selectors
+            '#yoast_wpseo_metadesc',
+            'textarea[name="yoast_wpseo_metadesc"]',
+            '#snippet-editor-meta-description',
+            
+            // Block Editor (Gutenberg) selectors
+            '.yoast-field-group__inputfield[name*="metadesc"]',
+            '[data-id="metaDesc"]',
+            'textarea[placeholder*="meta description"]',
+            'textarea[placeholder*="Meta description"]',
+            
+            // Yoast Premium selectors
+            '.yoast-metabox textarea[name*="metadesc"]',
+            '#wpseo-meta-description-content',
+            
+            // React/Redux based selectors (newer Yoast versions)
+            'textarea[aria-label*="Meta description"]',
+            'textarea[aria-label*="meta description"]',
+            
+            // Fallback selectors
+            'textarea[id*="metadesc"]',
+            'textarea[name*="metadesc"]',
+            'textarea[class*="metadesc"]'
         ];
         
         var $yoastField = null;
+        var usedSelector = '';
         
+        // Try each selector until we find one that works
         for (var i = 0; i < yoastSelectors.length; i++) {
             $yoastField = $(yoastSelectors[i]);
-            if ($yoastField.length > 0) {
+            if ($yoastField.length > 0 && $yoastField.is(':visible')) {
+                usedSelector = yoastSelectors[i];
+                console.log('Found Yoast field using selector:', usedSelector);
                 break;
             }
         }
         
         if ($yoastField && $yoastField.length > 0) {
-            $yoastField.val(generatedMeta).trigger('change');
+            // Apply the meta description
+            $yoastField.val(generatedMeta);
             
-            // For Gutenberg/Block editor, we might need to trigger additional events
-            if (typeof wp !== 'undefined' && wp.data) {
-                // Trigger Yoast update in block editor
-                setTimeout(function() {
-                    $yoastField.trigger('input').trigger('blur');
-                }, 100);
+            // Trigger various events to ensure Yoast recognizes the change
+            $yoastField.trigger('input').trigger('change').trigger('keyup').trigger('blur');
+            
+            // For React-based components (newer Yoast versions)
+            if (typeof Event !== 'undefined') {
+                var inputEvent = new Event('input', { bubbles: true });
+                var changeEvent = new Event('change', { bubbles: true });
+                
+                $yoastField[0].dispatchEvent(inputEvent);
+                $yoastField[0].dispatchEvent(changeEvent);
             }
             
-            showSuccess('Meta description applied to Yoast SEO field!');
+            // For Gutenberg/Block editor, try additional methods
+            if (typeof wp !== 'undefined' && wp.data) {
+                // Wait a bit then trigger additional events
+                setTimeout(function() {
+                    $yoastField.trigger('input').trigger('blur');
+                    
+                    // Try to trigger Yoast's own update functions
+                    if (window.YoastSEO && window.YoastSEO.app) {
+                        try {
+                            window.YoastSEO.app.refresh();
+                        } catch (e) {
+                            console.log('Could not trigger Yoast refresh:', e);
+                        }
+                    }
+                }, 100);
+                
+                // Another attempt after a longer delay
+                setTimeout(function() {
+                    $yoastField.trigger('change');
+                }, 500);
+            }
+            
+            showSuccess('Meta description applied to Yoast SEO field! (Used: ' + usedSelector + ')');
+            
+            // Highlight the field briefly to show it worked
+            $yoastField.css('background-color', '#90EE90');
+            setTimeout(function() {
+                $yoastField.css('background-color', '');
+            }, 2000);
+            
         } else {
-            showError('Could not find Yoast SEO meta description field. Please copy and paste manually.');
+            // If we can't find the field, provide helpful debugging info
+            console.log('Available textarea elements:');
+            $('textarea').each(function(index) {
+                console.log(index + ':', {
+                    id: this.id,
+                    name: this.name,
+                    className: this.className,
+                    placeholder: $(this).attr('placeholder'),
+                    visible: $(this).is(':visible')
+                });
+            });
+            
+            showError('Could not find Yoast SEO meta description field. Please copy and paste manually.<br><small>Check browser console for debugging info.</small>');
+            
+            // Offer manual copy option
+            $('#mcp-generated-meta').select();
+            showSuccess('Text selected - you can copy it manually (Ctrl+C) and paste into the Yoast field.');
         }
     });
 
@@ -129,6 +206,42 @@ jQuery(document).ready(function($) {
                 }
             }, 2000);
         });
+    }
+
+    function testConnection() {
+        if (!mcpMeta.server_url) {
+            updateConnectionStatus('error', 'No server URL configured');
+            return;
+        }
+        
+        updateConnectionStatus('checking', 'Testing connection...');
+        
+        $.ajax({
+            url: mcpMeta.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'mcp_test_connection',
+                nonce: mcpMeta.nonce
+            },
+            success: function(response) {
+                if (response.success) {
+                    updateConnectionStatus('connected', 'Connected to MCP server');
+                } else {
+                    updateConnectionStatus('error', 'Connection failed: ' + (response.data.message || 'Unknown error'));
+                }
+            },
+            error: function() {
+                updateConnectionStatus('error', 'Connection test failed');
+            }
+        });
+    }
+
+    function updateConnectionStatus(status, message) {
+        var $statusDot = $('.mcp-status-dot');
+        var $statusText = $('.mcp-status-text');
+        
+        $statusDot.removeClass('connected checking error').addClass(status);
+        $statusText.text(message);
     }
 
     function displayContentAnalysis(data) {
@@ -247,59 +360,41 @@ jQuery(document).ready(function($) {
         }, 3000);
     }
 
-    // Gutenberg/Block Editor integration
-    if (typeof wp !== 'undefined' && wp.data && wp.plugins) {
-        // Register a sidebar plugin for Gutenberg
-        wp.plugins.registerPlugin('mcp-meta-generator-sidebar', {
-            render: function() {
-                return wp.element.createElement(
-                    wp.editPost.PluginSidebar,
-                    {
-                        name: 'mcp-meta-generator',
-                        title: 'MCP Meta Generator',
-                        icon: 'admin-generic'
-                    },
-                    wp.element.createElement('div', {
-                        id: 'mcp-meta-generator-gutenberg',
-                        dangerouslySetInnerHTML: {
-                            __html: $('#mcp-meta-generator').html()
-                        }
-                    })
-                );
-            }
+    // Debug function to find Yoast fields
+    function findYoastFields() {
+        console.log('=== Yoast Field Debug Info ===');
+        console.log('All textarea elements:');
+        $('textarea').each(function(index) {
+            console.log(index + ':', {
+                id: this.id,
+                name: this.name,
+                className: this.className,
+                placeholder: $(this).attr('placeholder'),
+                visible: $(this).is(':visible'),
+                value: $(this).val().substring(0, 50) + '...'
+            });
+        });
+        
+        console.log('All input elements with "meta" in id/name/class:');
+        $('input, textarea').filter(function() {
+            return this.id.toLowerCase().includes('meta') || 
+                   (this.name && this.name.toLowerCase().includes('meta')) ||
+                   this.className.toLowerCase().includes('meta');
+        }).each(function(index) {
+            console.log('Meta field ' + index + ':', {
+                tagName: this.tagName,
+                id: this.id,
+                name: this.name,
+                className: this.className,
+                visible: $(this).is(':visible')
+            });
         });
     }
 
-    // Handle classic editor vs Gutenberg differences
-    function getPostContent() {
-        // Try Gutenberg first
-        if (typeof wp !== 'undefined' && wp.data) {
-            var content = wp.data.select('core/editor').getEditedPostContent();
-            if (content) {
-                return content;
-            }
-        }
-        
-        // Fallback to classic editor
-        if (typeof tinyMCE !== 'undefined' && tinyMCE.activeEditor) {
-            return tinyMCE.activeEditor.getContent();
-        }
-        
-        // Final fallback to textarea
-        return $('#content').val() || '';
-    }
-
-    function getPostTitle() {
-        // Try Gutenberg first
-        if (typeof wp !== 'undefined' && wp.data) {
-            var title = wp.data.select('core/editor').getEditedPostAttribute('title');
-            if (title) {
-                return title;
-            }
-        }
-        
-        // Fallback to classic editor
-        return $('#title').val() || $('.editor-post-title__input').val() || '';
+    // Add debug button (remove in production)
+    if (window.location.href.includes('wp-admin')) {
+        $('#mcp-meta-generator').append('<button type="button" onclick="window.mcpDebug()" style="margin-top:10px; font-size:11px;">Debug Yoast Fields</button>');
+        window.mcpDebug = findYoastFields;
     }
 
     // Export functions for potential external use
@@ -315,6 +410,7 @@ jQuery(document).ready(function($) {
         },
         applyToYoast: function() {
             $('#mcp-apply-meta').trigger('click');
-        }
+        },
+        findYoastFields: findYoastFields
     };
 });
