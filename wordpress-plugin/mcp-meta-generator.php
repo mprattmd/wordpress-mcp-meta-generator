@@ -35,6 +35,7 @@ class MCPMetaDescriptionGenerator {
         add_action('wp_ajax_mcp_generate_meta_description', array($this, 'ajax_generate_meta_description'));
         add_action('wp_ajax_mcp_analyze_content', array($this, 'ajax_analyze_content'));
         add_action('wp_ajax_mcp_batch_generate', array($this, 'ajax_batch_generate'));
+        add_action('wp_ajax_mcp_test_connection', array($this, 'ajax_test_connection'));
         
         // Add meta box for manual generation
         add_action('add_meta_boxes', array($this, 'add_meta_box'));
@@ -64,7 +65,7 @@ class MCPMetaDescriptionGenerator {
         add_settings_section(
             'mcp_meta_main',
             'MCP Server Configuration',
-            null,
+            array($this, 'settings_section_callback'),
             'mcp-meta-generator'
         );
         
@@ -94,7 +95,7 @@ class MCPMetaDescriptionGenerator {
     }
     
     public function enqueue_admin_scripts($hook) {
-        if ('post.php' !== $hook && 'post-new.php' !== $hook) {
+        if ('post.php' !== $hook && 'post-new.php' !== $hook && 'settings_page_mcp-meta-generator' !== $hook) {
             return;
         }
         
@@ -109,7 +110,8 @@ class MCPMetaDescriptionGenerator {
         wp_localize_script('mcp-meta-generator', 'mcpMeta', array(
             'ajax_url' => admin_url('admin-ajax.php'),
             'nonce' => wp_create_nonce('mcp_meta_nonce'),
-            'auto_generate' => $this->options['auto_generate']
+            'auto_generate' => $this->options['auto_generate'],
+            'server_url' => $this->options['mcp_server_url']
         ));
         
         wp_enqueue_style(
@@ -137,6 +139,13 @@ class MCPMetaDescriptionGenerator {
         $current_meta = get_post_meta($post->ID, '_yoast_wpseo_metadesc', true);
         
         echo '<div id="mcp-meta-generator">';
+        
+        // Connection status
+        echo '<div id="mcp-connection-status" class="mcp-status-indicator">';
+        echo '<span class="mcp-status-dot"></span>';
+        echo '<span class="mcp-status-text">Checking connection...</span>';
+        echo '</div>';
+        
         echo '<p><strong>Current Meta Description:</strong></p>';
         echo '<textarea readonly style="width:100%; height:60px;">' . esc_textarea($current_meta) . '</textarea>';
         
@@ -164,6 +173,22 @@ class MCPMetaDescriptionGenerator {
         echo '</div>';
         
         echo '</div>';
+    }
+    
+    public function ajax_test_connection() {
+        if (!wp_verify_nonce($_POST['nonce'], 'mcp_meta_nonce')) {
+            wp_die('Security check failed');
+        }
+        
+        try {
+            $health_check = $this->test_server_connection();
+            wp_send_json_success($health_check);
+        } catch (Exception $e) {
+            wp_send_json_error(array(
+                'message' => $e->getMessage(),
+                'server_url' => $this->options['mcp_server_url']
+            ));
+        }
     }
     
     public function ajax_generate_meta_description() {
@@ -217,7 +242,9 @@ class MCPMetaDescriptionGenerator {
             ));
             
             // Store suggested keywords for later use
-            update_post_meta($post_id, '_mcp_suggested_keywords', $result['topKeywords']);
+            if (isset($result['topKeywords'])) {
+                update_post_meta($post_id, '_mcp_suggested_keywords', $result['topKeywords']);
+            }
             
             wp_send_json_success($result);
         } catch (Exception $e) {
@@ -258,45 +285,81 @@ class MCPMetaDescriptionGenerator {
         }
     }
     
-    private function call_mcp_server($tool, $args) {
+    private function test_server_connection() {
         $server_url = $this->options['mcp_server_url'];
         if (empty($server_url)) {
             throw new Exception('MCP Server URL not configured');
         }
         
-        $request_body = json_encode(array(
-            'method' => 'tools/call',
-            'params' => array(
-                'name' => $tool,
-                'arguments' => $args
+        // Test health check endpoint
+        $health_url = rtrim($server_url, '/') . '/';
+        
+        $response = wp_remote_get($health_url, array(
+            'timeout' => 10,
+            'headers' => array(
+                'User-Agent' => 'WordPress-MCP-Meta-Generator/1.0'
             )
         ));
         
-        $response = wp_remote_post($server_url, array(
-            'headers' => array(
-                'Content-Type' => 'application/json',
-                'User-Agent' => 'WordPress-MCP-Meta-Generator/1.0'
-            ),
-            'body' => $request_body,
-            'timeout' => 30,
-            'method' => 'POST'
-        ));
-        
         if (is_wp_error($response)) {
-            throw new Exception('MCP server request failed: ' . $response->get_error_message());
+            throw new Exception('Connection failed: ' . $response->get_error_message());
+        }
+        
+        $status_code = wp_remote_retrieve_response_code($response);
+        if ($status_code !== 200) {
+            throw new Exception("Server returned status {$status_code}");
         }
         
         $body = wp_remote_retrieve_body($response);
         $data = json_decode($body, true);
         
         if (json_last_error() !== JSON_ERROR_NONE) {
-            throw new Exception('Invalid JSON response from MCP server');
+            throw new Exception('Invalid JSON response from server');
         }
         
-        // Parse MCP response format
-        if (isset($data['content']) && is_array($data['content'])) {
-            $content = $data['content'][0]['text'] ?? '';
-            return json_decode($content, true);
+        return $data;
+    }
+    
+    private function call_mcp_server($tool, $args) {
+        $server_url = $this->options['mcp_server_url'];
+        if (empty($server_url)) {
+            throw new Exception('MCP Server URL not configured');
+        }
+        
+        // Ensure URL ends with /api/generate for the HTTP API
+        $api_url = rtrim($server_url, '/') . '/api/generate';
+        
+        $request_body = json_encode(array(
+            'tool' => $tool,
+            'args' => $args
+        ));
+        
+        $response = wp_remote_post($api_url, array(
+            'headers' => array(
+                'Content-Type' => 'application/json',
+                'User-Agent' => 'WordPress-MCP-Meta-Generator/1.0'
+            ),
+            'body' => $request_body,
+            'timeout' => 30,
+            'method' => 'POST',
+            'sslverify' => !defined('WP_DEBUG') || !WP_DEBUG // Allow self-signed certs in debug mode
+        ));
+        
+        if (is_wp_error($response)) {
+            throw new Exception('MCP server request failed: ' . $response->get_error_message());
+        }
+        
+        $status_code = wp_remote_retrieve_response_code($response);
+        if ($status_code !== 200) {
+            $body = wp_remote_retrieve_body($response);
+            throw new Exception("MCP server returned status {$status_code}: {$body}");
+        }
+        
+        $body = wp_remote_retrieve_body($response);
+        $data = json_decode($body, true);
+        
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            throw new Exception('Invalid JSON response from MCP server: ' . $body);
         }
         
         return $data;
@@ -345,6 +408,14 @@ class MCPMetaDescriptionGenerator {
         return $sanitized;
     }
     
+    public function settings_section_callback() {
+        echo '<p>Configure your MCP server connection and default settings.</p>';
+        echo '<div id="mcp-connection-test">';
+        echo '<button type="button" class="button" id="test-connection">Test Connection</button>';
+        echo '<span id="connection-result"></span>';
+        echo '</div>';
+    }
+    
     public function admin_page() {
         ?>
         <div class="wrap">
@@ -356,16 +427,69 @@ class MCPMetaDescriptionGenerator {
                 submit_button();
                 ?>
             </form>
+            
+            <h2>Usage Instructions</h2>
+            <div class="mcp-instructions">
+                <ol>
+                    <li><strong>Deploy MCP Server:</strong> Use GitHub Codespaces, Railway, or Vercel</li>
+                    <li><strong>Enter Server URL:</strong> Add your server URL above (must include https:// or http://)</li>
+                    <li><strong>Test Connection:</strong> Click "Test Connection" to verify setup</li>
+                    <li><strong>Edit Posts:</strong> Look for "MCP Meta Description Generator" box when editing</li>
+                </ol>
+                
+                <h3>Server URL Examples:</h3>
+                <ul>
+                    <li><code>https://abc123-3000.app.github.dev</code> (GitHub Codespaces)</li>
+                    <li><code>https://your-app.up.railway.app</code> (Railway)</li>
+                    <li><code>https://your-app.vercel.app</code> (Vercel)</li>
+                </ul>
+            </div>
         </div>
+        
+        <script>
+        jQuery(document).ready(function($) {
+            $('#test-connection').on('click', function() {
+                var $button = $(this);
+                var $result = $('#connection-result');
+                
+                $button.prop('disabled', true).text('Testing...');
+                $result.html('');
+                
+                $.ajax({
+                    url: ajaxurl,
+                    type: 'POST',
+                    data: {
+                        action: 'mcp_test_connection',
+                        nonce: '<?php echo wp_create_nonce('mcp_meta_nonce'); ?>'
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            $result.html('<span style="color: green;">✅ Connected! Server: ' + 
+                                        (response.data.message || 'OK') + '</span>');
+                        } else {
+                            $result.html('<span style="color: red;">❌ Failed: ' + 
+                                        (response.data.message || 'Unknown error') + '</span>');
+                        }
+                    },
+                    error: function() {
+                        $result.html('<span style="color: red;">❌ Connection test failed</span>');
+                    },
+                    complete: function() {
+                        $button.prop('disabled', false).text('Test Connection');
+                    }
+                });
+            });
+        });
+        </script>
         <?php
     }
     
     public function server_url_callback() {
         printf(
-            '<input type="url" id="mcp_server_url" name="mcp_meta_options[mcp_server_url]" value="%s" class="regular-text" />',
+            '<input type="url" id="mcp_server_url" name="mcp_meta_options[mcp_server_url]" value="%s" class="regular-text" placeholder="https://your-server.com" />',
             isset($this->options['mcp_server_url']) ? esc_attr($this->options['mcp_server_url']) : ''
         );
-        echo '<p class="description">URL of your MCP server endpoint</p>';
+        echo '<p class="description">URL of your MCP server (include https:// or http://)</p>';
     }
     
     public function default_tone_callback() {
@@ -376,6 +500,7 @@ class MCPMetaDescriptionGenerator {
             echo "<option value='{$tone}' {$selected}>" . ucfirst($tone) . "</option>";
         }
         echo '</select>';
+        echo '<p class="description">Default writing style for meta descriptions</p>';
     }
     
     public function auto_generate_callback() {
@@ -384,6 +509,10 @@ class MCPMetaDescriptionGenerator {
             checked(1, $this->options['auto_generate'], false)
         );
         echo '<label for="auto_generate">Automatically suggest meta descriptions when editing posts</label>';
+    }
+    
+    public function save_meta_box($post_id) {
+        // Auto-save functionality could go here
     }
     
     public function yoast_missing_notice() {
