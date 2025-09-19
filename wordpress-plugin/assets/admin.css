@@ -39,6 +39,51 @@
     background: #fff;
 }
 
+/* Connection Status Indicator */
+.mcp-status-indicator {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 4px;
+    margin-bottom: 15px;
+    font-size: 12px;
+}
+
+.mcp-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 8px;
+    transition: background-color 0.3s ease;
+}
+
+.mcp-status-dot.connected {
+    background-color: #28a745;
+    box-shadow: 0 0 6px rgba(40, 167, 69, 0.5);
+}
+
+.mcp-status-dot.checking {
+    background-color: #ffc107;
+    animation: mcp-pulse 1.5s infinite;
+}
+
+.mcp-status-dot.error {
+    background-color: #dc3545;
+}
+
+@keyframes mcp-pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+}
+
+.mcp-status-text {
+    color: #495057;
+    font-weight: 500;
+}
+
 #mcp-content-analysis {
     background: #f8f9fa;
     border: 1px solid #e9ecef;
@@ -74,6 +119,7 @@
     background: #fff;
     border: 2px solid #28a745;
     font-weight: 500;
+    transition: background-color 0.3s ease;
 }
 
 #mcp-suggestions {
@@ -160,18 +206,24 @@
     text-align: right;
     margin-top: 4px;
     font-weight: 600;
+    padding: 4px 8px;
+    border-radius: 3px;
+    background: #f8f9fa;
 }
 
 .mcp-char-counter.over-limit {
     color: #dc3232;
+    background: #ffe6e6;
 }
 
 .mcp-char-counter.under-limit {
     color: #ffb900;
+    background: #fff8e1;
 }
 
 .mcp-char-counter.optimal {
     color: #46b450;
+    background: #f0f8f0;
 }
 
 /* Loading States */
@@ -198,6 +250,16 @@
     }
 }
 
+/* Field Highlight Animation */
+.mcp-field-highlight {
+    animation: mcp-highlight 2s ease-out;
+}
+
+@keyframes mcp-highlight {
+    0% { background-color: #90EE90; }
+    100% { background-color: transparent; }
+}
+
 /* Responsive adjustments */
 @media (max-width: 782px) {
     #mcp-meta-generator {
@@ -213,6 +275,10 @@
     #mcp-tone-select {
         margin-bottom: 10px;
     }
+    
+    .mcp-status-indicator {
+        font-size: 11px;
+    }
 }
 
 /* Settings Page Styles */
@@ -227,6 +293,39 @@
 .wrap .form-table .description {
     font-style: italic;
     color: #666;
+}
+
+.mcp-instructions {
+    background: #f0f6ff;
+    border: 1px solid #b5d7ff;
+    border-radius: 4px;
+    padding: 15px;
+    margin: 20px 0;
+}
+
+.mcp-instructions h3 {
+    margin-top: 20px;
+    color: #0073aa;
+}
+
+.mcp-instructions code {
+    background: #fff;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: monospace;
+    color: #d14;
+}
+
+#mcp-connection-test {
+    margin: 15px 0;
+    padding: 10px;
+    background: #f9f9f9;
+    border-radius: 4px;
+}
+
+#connection-result {
+    margin-left: 10px;
+    font-weight: 600;
 }
 
 /* Gutenberg Integration */
@@ -398,4 +497,19 @@
 @keyframes mcp-progress-shine {
     0% { transform: translateX(-100%); }
     100% { transform: translateX(100%); }
+}
+
+/* Debug button styling */
+button[onclick*="mcpDebug"] {
+    background: #666 !important;
+    color: #fff !important;
+    border: none !important;
+    padding: 4px 8px !important;
+    border-radius: 3px !important;
+    font-size: 11px !important;
+    cursor: pointer !important;
+}
+
+button[onclick*="mcpDebug"]:hover {
+    background: #555 !important;
 }
