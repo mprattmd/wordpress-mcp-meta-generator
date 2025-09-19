@@ -1,0 +1,56 @@
+{
+  "name": "wordpress-mcp-meta-generator",
+  "version": "1.0.0",
+  "description": "MCP server for generating SEO-optimized meta descriptions for WordPress using AI",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "test": "jest",
+    "lint": "eslint src/**/*.ts",
+    "clean": "rm -rf dist",
+    "prebuild": "npm run clean"
+  },
+  "keywords": [
+    "wordpress",
+    "seo",
+    "meta-description", 
+    "mcp",
+    "model-context-protocol",
+    "ai",
+    "yoast-seo"
+  ],
+  "author": "mprattmd",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0",
+    "tsx": "^4.0.0",
+    "eslint": "^8.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "jest": "^29.0.0",
+    "@types/jest": "^29.0.0",
+    "ts-jest": "^29.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mprattmd/wordpress-mcp-meta-generator.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mprattmd/wordpress-mcp-meta-generator/issues"
+  },
+  "homepage": "https://github.com/mprattmd/wordpress-mcp-meta-generator#readme",
+  "mcp": {
+    "entry": "dist/index.js",
+    "runtime": "node"
+  }
+}
