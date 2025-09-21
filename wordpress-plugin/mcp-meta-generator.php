@@ -3,7 +3,7 @@
  * Plugin Name: MCP Meta Description Generator
  * Plugin URI: https://github.com/mprattmd/wordpress-mcp-meta-generator
  * Description: Generates meta descriptions using MCP server integration for Yoast SEO
- * Version: 1.0.0
+ * Version: 1.0.1
  * Author: mprattmd
  * License: GPL v2 or later
  * Text Domain: mcp-meta-generator
@@ -17,7 +17,7 @@ if (!defined('ABSPATH')) {
 // Define plugin constants
 define('MCP_META_PLUGIN_PATH', plugin_dir_path(__FILE__));
 define('MCP_META_PLUGIN_URL', plugin_dir_url(__FILE__));
-define('MCP_META_VERSION', '1.0.0');
+define('MCP_META_VERSION', '1.0.1');
 
 class MCPMetaDescriptionGenerator {
     
@@ -73,6 +73,14 @@ class MCPMetaDescriptionGenerator {
             'mcp_server_url',
             'MCP Server URL',
             array($this, 'server_url_callback'),
+            'mcp-meta-generator',
+            'mcp_meta_main'
+        );
+        
+        add_settings_field(
+            'mcp_api_key',
+            'API Key',
+            array($this, 'api_key_callback'),
             'mcp-meta-generator',
             'mcp_meta_main'
         );
@@ -297,7 +305,7 @@ class MCPMetaDescriptionGenerator {
         $response = wp_remote_get($health_url, array(
             'timeout' => 10,
             'headers' => array(
-                'User-Agent' => 'WordPress-MCP-Meta-Generator/1.0'
+                'User-Agent' => 'WordPress-MCP-Meta-Generator/1.0.1'
             )
         ));
         
@@ -326,6 +334,11 @@ class MCPMetaDescriptionGenerator {
             throw new Exception('MCP Server URL not configured');
         }
         
+        $api_key = $this->options['mcp_api_key'];
+        if (empty($api_key)) {
+            throw new Exception('MCP API Key not configured');
+        }
+        
         // Ensure URL ends with /api/generate for the HTTP API
         $api_url = rtrim($server_url, '/') . '/api/generate';
         
@@ -337,7 +350,8 @@ class MCPMetaDescriptionGenerator {
         $response = wp_remote_post($api_url, array(
             'headers' => array(
                 'Content-Type' => 'application/json',
-                'User-Agent' => 'WordPress-MCP-Meta-Generator/1.0'
+                'User-Agent' => 'WordPress-MCP-Meta-Generator/1.0.1',
+                'X-API-Key' => $api_key
             ),
             'body' => $request_body,
             'timeout' => 30,
@@ -393,6 +407,7 @@ class MCPMetaDescriptionGenerator {
     private function get_default_options() {
         return array(
             'mcp_server_url' => '',
+            'mcp_api_key' => '',
             'default_tone' => 'professional',
             'auto_generate' => false
         );
@@ -401,6 +416,7 @@ class MCPMetaDescriptionGenerator {
     public function sanitize_options($input) {
         $sanitized = array();
         $sanitized['mcp_server_url'] = esc_url_raw($input['mcp_server_url']);
+        $sanitized['mcp_api_key'] = sanitize_text_field($input['mcp_api_key']);
         $sanitized['default_tone'] = in_array($input['default_tone'], array('professional', 'casual', 'technical', 'marketing')) 
             ? $input['default_tone'] : 'professional';
         $sanitized['auto_generate'] = !empty($input['auto_generate']);
@@ -433,6 +449,7 @@ class MCPMetaDescriptionGenerator {
                 <ol>
                     <li><strong>Deploy MCP Server:</strong> Use GitHub Codespaces, Railway, or Vercel</li>
                     <li><strong>Enter Server URL:</strong> Add your server URL above (must include https:// or http://)</li>
+                    <li><strong>Enter API Key:</strong> Copy the API key from your server startup logs</li>
                     <li><strong>Test Connection:</strong> Click "Test Connection" to verify setup</li>
                     <li><strong>Edit Posts:</strong> Look for "MCP Meta Description Generator" box when editing</li>
                 </ol>
@@ -490,6 +507,14 @@ class MCPMetaDescriptionGenerator {
             isset($this->options['mcp_server_url']) ? esc_attr($this->options['mcp_server_url']) : ''
         );
         echo '<p class="description">URL of your MCP server (include https:// or http://)</p>';
+    }
+    
+    public function api_key_callback() {
+        printf(
+            '<input type="password" id="mcp_api_key" name="mcp_meta_options[mcp_api_key]" value="%s" class="regular-text" placeholder="Your API key from server startup" />',
+            isset($this->options['mcp_api_key']) ? esc_attr($this->options['mcp_api_key']) : ''
+        );
+        echo '<p class="description">API key from your MCP server (shown when server starts)</p>';
     }
     
     public function default_tone_callback() {
