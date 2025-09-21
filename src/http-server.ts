@@ -6,6 +6,7 @@ import https from 'https';
 import http from 'http';
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 
 // MCP Server implementation
 interface MetaDescriptionRequest {
@@ -351,6 +352,42 @@ class WordPressMCPMetaServer {
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Get API key from environment or generate one
+const API_KEY = process.env.MCP_API_KEY || crypto.randomBytes(32).toString('hex');
+
+// Log API key on startup
+console.log('\n🔑 API Key for WordPress plugin:', API_KEY);
+console.log('   Save this key in your WordPress plugin settings!\n');
+
+// Authentication middleware
+function authenticateApiKey(req: express.Request, res: express.Response, next: express.NextFunction) {
+  // Skip auth for health check
+  if (req.path === '/') {
+    return next();
+  }
+
+  const apiKey = req.headers['x-api-key'] || req.headers['authorization']?.replace('Bearer ', '');
+  
+  if (!apiKey) {
+    console.log('❌ Authentication failed: No API key provided');
+    return res.status(401).json({
+      error: 'Authentication required',
+      message: 'Please provide an API key in the X-API-Key header or Authorization: Bearer header'
+    });
+  }
+
+  if (apiKey !== API_KEY) {
+    console.log('❌ Authentication failed: Invalid API key');
+    return res.status(401).json({
+      error: 'Invalid API key',
+      message: 'The provided API key is not valid'
+    });
+  }
+
+  console.log('✅ Authentication successful');
+  next();
+}
+
 // Logging middleware to debug requests
 app.use((req, res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
@@ -358,26 +395,29 @@ app.use((req, res, next) => {
   next();
 });
 
-// VERY permissive CORS - accept everything
+// CORS - accept all origins but require API key
 app.use(cors({
-  origin: '*',  // Allow ALL origins
-  credentials: false,  // Don't require credentials
+  origin: '*',
+  credentials: false,
   methods: ['GET', 'POST', 'OPTIONS', 'PUT', 'DELETE'],
-  allowedHeaders: '*',  // Allow all headers
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key'],
   exposedHeaders: '*',
   maxAge: 86400
 }));
 
-// Handle preflight requests explicitly
+// Handle preflight requests
 app.options('*', cors());
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
+// Apply authentication to all routes except health check
+app.use(authenticateApiKey);
+
 // Initialize MCP server
 const mcpServer = new WordPressMCPMetaServer();
 
-// Health check endpoint
+// Health check endpoint (no auth required)
 app.get('/', (req, res) => {
   res.json({ 
     status: 'ok', 
@@ -386,11 +426,12 @@ app.get('/', (req, res) => {
     timestamp: new Date().toISOString(),
     secure: req.secure || req.headers['x-forwarded-proto'] === 'https',
     cors: 'enabled',
-    auth: 'none'
+    auth: 'required',
+    authMethod: 'API key in X-API-Key or Authorization header'
   });
 });
 
-// API endpoints
+// API endpoints (auth required)
 app.post('/api/generate', async (req, res) => {
   try {
     console.log('Received request body:', JSON.stringify(req.body, null, 2));
@@ -455,7 +496,7 @@ app.use((req, res) => {
   });
 });
 
-// Function to create HTTP server (no HTTPS to avoid cert issues)
+// Create HTTP server
 function createServer() {
   const server = http.createServer(app);
   server.listen(PORT, '0.0.0.0', () => {
@@ -463,7 +504,7 @@ function createServer() {
     console.log(`🔗 Health check: http://localhost:${PORT}/`);
     console.log(`🚀 API endpoint: http://localhost:${PORT}/api/generate`);
     console.log(`✅ CORS enabled for all origins`);
-    console.log(`🔓 No authentication required`);
+    console.log(`🔐 API key authentication required`);
     console.log(`📡 Listening on 0.0.0.0:${PORT}\n`);
   });
   return server;
