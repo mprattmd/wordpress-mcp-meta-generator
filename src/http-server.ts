@@ -351,13 +351,25 @@ class WordPressMCPMetaServer {
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware
+// Logging middleware to debug requests
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+  console.log('Headers:', JSON.stringify(req.headers, null, 2));
+  next();
+});
+
+// VERY permissive CORS - accept everything
 app.use(cors({
-  origin: true, // Allow all origins for now
-  credentials: true,
-  methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+  origin: '*',  // Allow ALL origins
+  credentials: false,  // Don't require credentials
+  methods: ['GET', 'POST', 'OPTIONS', 'PUT', 'DELETE'],
+  allowedHeaders: '*',  // Allow all headers
+  exposedHeaders: '*',
+  maxAge: 86400
 }));
+
+// Handle preflight requests explicitly
+app.options('*', cors());
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
@@ -372,19 +384,24 @@ app.get('/', (req, res) => {
     message: 'WordPress MCP Meta Description Generator HTTP API',
     version: '1.0.0',
     timestamp: new Date().toISOString(),
-    secure: req.secure || req.headers['x-forwarded-proto'] === 'https'
+    secure: req.secure || req.headers['x-forwarded-proto'] === 'https',
+    cors: 'enabled',
+    auth: 'none'
   });
 });
 
 // API endpoints
 app.post('/api/generate', async (req, res) => {
   try {
+    console.log('Received request body:', JSON.stringify(req.body, null, 2));
+    
     const { tool, args } = req.body;
     
     if (!tool || !args) {
       return res.status(400).json({
         error: 'Missing tool or args parameter',
-        required: 'Both "tool" and "args" are required'
+        required: 'Both "tool" and "args" are required',
+        received: { tool, args: args ? 'present' : 'missing' }
       });
     }
 
@@ -408,6 +425,7 @@ app.post('/api/generate', async (req, res) => {
         });
     }
     
+    console.log('Sending response:', JSON.stringify(result, null, 2));
     res.json(result);
   } catch (error) {
     console.error('API Error:', error);
@@ -431,51 +449,24 @@ app.use((err: any, req: any, res: any, next: any) => {
 app.use((req, res) => {
   res.status(404).json({
     error: 'Not found',
+    path: req.path,
     available_endpoints: ['GET /', 'POST /api/generate'],
     timestamp: new Date().toISOString()
   });
 });
 
-// Function to create HTTPS server if SSL certificates are available
+// Function to create HTTP server (no HTTPS to avoid cert issues)
 function createServer() {
-  // Check for SSL certificates
-  const httpsOptions = {
-    key: process.env.SSL_KEY || null,
-    cert: process.env.SSL_CERT || null
-  };
-
-  // Try to load SSL certificates from files if environment variables are not set
-  try {
-    if (!httpsOptions.key && fs.existsSync('./ssl/key.pem')) {
-      httpsOptions.key = fs.readFileSync('./ssl/key.pem');
-    }
-    if (!httpsOptions.cert && fs.existsSync('./ssl/cert.pem')) {
-      httpsOptions.cert = fs.readFileSync('./ssl/cert.pem');
-    }
-  } catch (error) {
-    console.log('SSL certificates not found, using HTTP');
-  }
-
-  // Create HTTPS server if we have both key and cert
-  if (httpsOptions.key && httpsOptions.cert) {
-    const server = https.createServer(httpsOptions, app);
-    server.listen(PORT, () => {
-      console.log(`🔒 WordPress MCP HTTPS API running on port ${PORT}`);
-      console.log(`🔗 Health check: https://localhost:${PORT}/`);
-      console.log(`🚀 API endpoint: https://localhost:${PORT}/api/generate`);
-    });
-    return server;
-  } else {
-    // Fall back to HTTP
-    const server = http.createServer(app);
-    server.listen(PORT, () => {
-      console.log(`🌐 WordPress MCP HTTP API running on port ${PORT}`);
-      console.log(`🔗 Health check: http://localhost:${PORT}/`);
-      console.log(`🚀 API endpoint: http://localhost:${PORT}/api/generate`);
-      console.log(`💡 To enable HTTPS, add SSL certificates to ./ssl/ directory`);
-    });
-    return server;
-  }
+  const server = http.createServer(app);
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`\n🌐 WordPress MCP HTTP API running on port ${PORT}`);
+    console.log(`🔗 Health check: http://localhost:${PORT}/`);
+    console.log(`🚀 API endpoint: http://localhost:${PORT}/api/generate`);
+    console.log(`✅ CORS enabled for all origins`);
+    console.log(`🔓 No authentication required`);
+    console.log(`📡 Listening on 0.0.0.0:${PORT}\n`);
+  });
+  return server;
 }
 
 // Start the server
