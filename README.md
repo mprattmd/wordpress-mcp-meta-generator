@@ -1,79 +1,114 @@
-# WordPress MCP Meta Description Generator
+# WordPress MCP Meta Generator
 
-🚀 **QUICK START - WORKING METHOD**
+An MCP (Model Context Protocol) server for generating SEO-optimized meta descriptions for WordPress posts using AI.
 
-## Deploy in GitHub Codespaces
+## 🚀 Quick Start
+
+### Easiest Way to Start the Server
+
+**On Mac/Linux:**
+```bash
+./start-server.sh
+```
+
+**On Windows:**
+```bash
+start-server.bat
+```
+
+**Or using npm:**
+```bash
+npm run quick-start
+```
+
+The script will automatically:
+- Install dependencies if needed
+- Build the project if needed
+- Start the server on port 3000
+
+### Alternative npm Commands
 
 ```bash
-# 1. Pull latest changes
-git pull origin main
+# Build and start (recommended)
+npm run serve
 
-# 2. Install dependencies
+# Just start (if already built)
+npm start
+
+# Development mode with auto-reload
+npm run dev
+
+# Build only
+npm run build
+```
+
+## 📝 Server Details
+
+- **Server URL:** `http://localhost:3000`
+- **Meta Generation Endpoint:** `http://localhost:3000/generate-meta`
+- **Health Check:** `http://localhost:3000/health`
+
+## 🔌 WordPress Plugin Connection
+
+Configure your WordPress plugin to connect to:
+```
+http://localhost:3000/generate-meta
+```
+
+## 📦 Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/mprattmd/wordpress-mcp-meta-generator.git
+
+# Navigate to directory
+cd wordpress-mcp-meta-generator
+
+# Install dependencies
 npm install
 
-# 3. Start the server (no build needed!)
-npx tsx src/http-server.ts
+# Build the project
+npm run build
+
+# Start the server
+npm start
 ```
 
-**Copy the API key** shown when the server starts!
+## 🛠️ Development
 
-## Configure WordPress Plugin
-
-1. Download the plugin from the `wordpress-plugin` folder
-2. Install in WordPress (Plugins → Add New → Upload Plugin)
-3. Go to Settings → MCP Meta Generator
-4. Enter:
-   - **Server URL**: Your Codespaces URL (e.g., `https://yourcodespace-3000.app.github.dev`)
-   - **API Key**: The key shown when server started
-5. Click "Test Connection"
-6. Save!
-
-## Port Configuration
-
-Make sure port 3000 is **PUBLIC** in Codespaces:
-1. Go to PORTS tab
-2. Right-click port 3000
-3. Select "Port Visibility" → "Public"
-
-## Features
-
-✅ API Key Authentication - Secure access
-✅ SEO-Optimized Meta Descriptions
-✅ Content Analysis
-✅ Multiple Writing Tones (Professional, Casual, Technical, Marketing)
-✅ Yoast SEO Integration
-✅ Batch Processing
-
-## Troubleshooting
-
-### Server won't start
 ```bash
-# Use the direct run method
-npx tsx src/http-server.ts
-```
-
-### 401 Unauthorized
-- Verify API key is entered correctly in WordPress
-- Check port 3000 is set to "Public"
-
-### Connection Failed
-- Ensure URL includes `https://`
-- Verify server is running in Codespaces
-
-## Development
-
-For development with auto-reload:
-```bash
+# Watch mode with auto-reload
 npm run dev
+
+# Run tests
+npm test
+
+# Lint code
+npm run lint
+
+# Clean build directory
+npm run clean
 ```
 
-## Architecture
+## 📂 Project Structure
 
-- **MCP Server**: TypeScript/Express HTTP API
-- **WordPress Plugin**: PHP with Ajax integration
-- **Authentication**: API Key (X-API-Key header)
-- **AI Generation**: Content analysis and meta description generation
+```
+├── src/                    # TypeScript source files
+│   ├── index.ts           # MCP server entry point
+│   └── http-server.ts     # HTTP server for WordPress plugin
+├── dist/                   # Compiled JavaScript (generated)
+├── wordpress-plugin/       # WordPress plugin files
+│   ├── mcp-meta-generator.php
+│   └── README.md
+├── start-server.sh        # Easy startup script (Mac/Linux)
+├── start-server.bat       # Easy startup script (Windows)
+└── package.json           # Dependencies and scripts
+```
 
-## License
+## 🔧 Configuration
 
-MIT
+The server runs on port 3000 by default. To change this, modify the `PORT` constant in `src/http-server.ts`.
+
+## 📄 License
+
+MIT License - see LICENSE file for details.

@@ -1,6 +1,6 @@
 {
   "name": "wordpress-mcp-meta-generator",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "MCP server for generating SEO-optimized meta descriptions for WordPress using AI",
   "main": "dist/index.js",
   "type": "module",
@@ -13,7 +13,9 @@
     "test": "jest",
     "lint": "eslint src/**/*.ts",
     "clean": "rm -rf dist",
-    "prebuild": "npm run clean"
+    "prebuild": "npm run clean",
+    "serve": "npm run build && npm start",
+    "quick-start": "npm run serve"
   },
   "keywords": [
     "wordpress",
