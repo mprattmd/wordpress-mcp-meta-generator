@@ -23,8 +23,5 @@
       "onAutoForward": "notify"
     }
   },
-  "postCreateCommand": "npm install",
-  "postAttachCommand": {
-    "server": "echo '\n\n🚀 To start the MCP server, run: npm run quick-start\n\n'"
-  }
+  "postCreateCommand": "npm install"
 }
