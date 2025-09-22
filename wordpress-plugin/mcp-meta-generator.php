@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MCP Meta & Image Alt Text Generator
  * Description: AI-powered meta descriptions and image alt text for WordPress
- * Version: 2.0.0
+ * Version: 2.0.1
  * Author: mprattmd
  */
 
@@ -164,8 +164,30 @@ class MCP_Complete_Generator {
         check_ajax_referer('mcp_nonce', 'nonce');
         
         try {
-            $this->call_server('test', []);
-            wp_send_json_success();
+            // Use the health check endpoint instead of calling a tool
+            $url = rtrim($this->options['mcp_server_url'], '/') . '/';
+            
+            $response = wp_remote_get($url, [
+                'timeout' => 10,
+                'sslverify' => false
+            ]);
+            
+            if (is_wp_error($response)) {
+                throw new Exception('Connection failed: ' . $response->get_error_message());
+            }
+            
+            $code = wp_remote_retrieve_response_code($response);
+            if ($code !== 200) {
+                throw new Exception('Server returned error code: ' . $code);
+            }
+            
+            $body = json_decode(wp_remote_retrieve_body($response), true);
+            
+            if (!isset($body['status']) || $body['status'] !== 'ok') {
+                throw new Exception('Invalid server response');
+            }
+            
+            wp_send_json_success('Connected to MCP server v' . ($body['version'] ?? '1.0.0'));
         } catch (Exception $e) {
             wp_send_json_error($e->getMessage());
         }
@@ -254,7 +276,8 @@ class MCP_Complete_Generator {
                 'X-API-Key' => $api_key
             ],
             'body' => json_encode(['tool' => $tool, 'args' => $args]),
-            'timeout' => 30
+            'timeout' => 30,
+            'sslverify' => false
         ]);
         
         if (is_wp_error($response)) {
