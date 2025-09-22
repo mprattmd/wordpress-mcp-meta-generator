@@ -1,6 +1,6 @@
 {
-  "name": "Node.js & TypeScript",
-  "image": "mcr.microsoft.com/devcontainers/typescript-node:18",
+  "name": "WordPress MCP Meta Generator",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:20",
   "features": {
     "ghcr.io/devcontainers/features/github-cli:1": {}
   },
@@ -8,12 +8,23 @@
     "vscode": {
       "extensions": [
         "ms-vscode.vscode-typescript-next",
-        "bradlc.vscode-tailwindcss",
-        "esbenp.prettier-vscode"
-      ]
+        "esbenp.prettier-vscode",
+        "dbaeumer.vscode-eslint"
+      ],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash"
+      }
     }
   },
   "forwardPorts": [3000],
-  "postCreateCommand": "npm install && npm run build",
-  "postStartCommand": "npm start"
+  "portsAttributes": {
+    "3000": {
+      "label": "MCP Server",
+      "onAutoForward": "notify"
+    }
+  },
+  "postCreateCommand": "npm install",
+  "postAttachCommand": {
+    "server": "echo '\n\n🚀 To start the MCP server, run: npm run quick-start\n\n'"
+  }
 }
