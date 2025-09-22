@@ -56,7 +56,7 @@ class WordPressMCPMetaServer {
       content: contentPreview,
       keywords,
       maxLength,
-      tone
+      tone: tone as 'professional' | 'casual' | 'technical' | 'marketing'
     });
 
     const suggestions = this.getOptimizationSuggestions(metaDescription, keywords, analysis);
@@ -107,7 +107,7 @@ class WordPressMCPMetaServer {
           content: post.content,
           keywords: post.keywords || [],
           maxLength: 155,
-          tone
+          tone: tone as 'professional' | 'casual' | 'technical' | 'marketing'
         });
         
         results.push({
@@ -235,16 +235,16 @@ class WordPressMCPMetaServer {
     // Generate based on content type and tone
     switch (tone) {
       case 'marketing':
-        description = this.createMarketingDescription(title, contentSummary, keywordPhrase, maxLength!);
+        description = this.createMarketingDescription(title, contentSummary, keywordPhrase || '', maxLength!);
         break;
       case 'technical':
-        description = this.createTechnicalDescription(title, contentSummary, keywordPhrase, maxLength!);
+        description = this.createTechnicalDescription(title, contentSummary, keywordPhrase || '', maxLength!);
         break;
       case 'casual':
-        description = this.createCasualDescription(title, contentSummary, keywordPhrase, maxLength!);
+        description = this.createCasualDescription(title, contentSummary, keywordPhrase || '', maxLength!);
         break;
       default:
-        description = this.createProfessionalDescription(title, contentSummary, keywordPhrase, maxLength!);
+        description = this.createProfessionalDescription(title, contentSummary, keywordPhrase || '', maxLength!);
     }
     
     // Ensure length constraint
@@ -259,7 +259,10 @@ class WordPressMCPMetaServer {
     const sentences = content.split(/[.!?]+/).filter(s => s.trim().length > 20);
     if (sentences.length === 0) return content.substring(0, maxLength);
     
-    let summary = sentences[0].trim();
+    const firstSentence = sentences[0];
+    if (!firstSentence) return content.substring(0, maxLength);
+    
+    let summary = firstSentence.trim();
     if (summary.length > maxLength) {
       summary = summary.substring(0, maxLength - 3) + '...';
     }
@@ -360,28 +363,31 @@ console.log('\n🔑 API Key for WordPress plugin:', API_KEY);
 console.log('   Save this key in your WordPress plugin settings!\n');
 
 // Authentication middleware
-function authenticateApiKey(req: express.Request, res: express.Response, next: express.NextFunction) {
+function authenticateApiKey(req: express.Request, res: express.Response, next: express.NextFunction): void {
   // Skip auth for health check
   if (req.path === '/') {
-    return next();
+    next();
+    return;
   }
 
   const apiKey = req.headers['x-api-key'] || req.headers['authorization']?.replace('Bearer ', '');
   
   if (!apiKey) {
     console.log('❌ Authentication failed: No API key provided');
-    return res.status(401).json({
+    res.status(401).json({
       error: 'Authentication required',
       message: 'Please provide an API key in the X-API-Key header or Authorization: Bearer header'
     });
+    return;
   }
 
   if (apiKey !== API_KEY) {
     console.log('❌ Authentication failed: Invalid API key');
-    return res.status(401).json({
+    res.status(401).json({
       error: 'Invalid API key',
       message: 'The provided API key is not valid'
     });
+    return;
   }
 
   console.log('✅ Authentication successful');
@@ -439,11 +445,12 @@ app.post('/api/generate', async (req, res) => {
     const { tool, args } = req.body;
     
     if (!tool || !args) {
-      return res.status(400).json({
+      res.status(400).json({
         error: 'Missing tool or args parameter',
         required: 'Both "tool" and "args" are required',
         received: { tool, args: args ? 'present' : 'missing' }
       });
+      return;
     }
 
     let result;
@@ -460,10 +467,11 @@ app.post('/api/generate', async (req, res) => {
         result = await mcpServer.batchGenerate(args);
         break;
       default:
-        return res.status(400).json({
+        res.status(400).json({
           error: `Unknown tool: ${tool}`,
           available_tools: ['generate_meta_description', 'analyze_content', 'batch_generate']
         });
+        return;
     }
     
     console.log('Sending response:', JSON.stringify(result, null, 2));
@@ -499,13 +507,14 @@ app.use((req, res) => {
 // Create HTTP server
 function createServer() {
   const server = http.createServer(app);
-  server.listen(PORT, '0.0.0.0', () => {
-    console.log(`\n🌐 WordPress MCP HTTP API running on port ${PORT}`);
-    console.log(`🔗 Health check: http://localhost:${PORT}/`);
-    console.log(`🚀 API endpoint: http://localhost:${PORT}/api/generate`);
+  const portNumber = typeof PORT === 'string' ? parseInt(PORT, 10) : PORT;
+  server.listen(portNumber, '0.0.0.0', () => {
+    console.log(`\n🌐 WordPress MCP HTTP API running on port ${portNumber}`);
+    console.log(`🔗 Health check: http://localhost:${portNumber}/`);
+    console.log(`🚀 API endpoint: http://localhost:${portNumber}/api/generate`);
     console.log(`✅ CORS enabled for all origins`);
     console.log(`🔐 API key authentication required`);
-    console.log(`📡 Listening on 0.0.0.0:${PORT}\n`);
+    console.log(`📡 Listening on 0.0.0.0:${portNumber}\n`);
   });
   return server;
 }
