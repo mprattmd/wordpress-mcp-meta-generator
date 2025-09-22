@@ -1,0 +1,81 @@
+.mcp-image-alt-box {
+    padding: 10px;
+}
+
+.mcp-image-analysis {
+    margin-top: 15px;
+}
+
+.mcp-analysis-results h4 {
+    margin-top: 0;
+    margin-bottom: 10px;
+}
+
+.image-item {
+    background: #f9f9f9;
+    border-radius: 4px;
+    margin-bottom: 10px;
+}
+
+.image-item img {
+    display: block;
+    margin-bottom: 10px;
+    border-radius: 2px;
+}
+
+.image-item .issues {
+    color: #d63638;
+    margin: 5px 0;
+}
+
+.image-item .issues ul {
+    margin: 5px 0;
+    padding-left: 20px;
+}
+
+.mcp-image-alt-admin .card {
+    max-width: 100%;
+    padding: 20px;
+}
+
+.mcp-settings {
+    margin: 20px 0;
+}
+
+.mcp-settings label {
+    display: inline-block;
+    margin-right: 10px;
+    margin-bottom: 10px;
+}
+
+.mcp-settings select,
+.mcp-settings input[type="number"] {
+    margin-right: 20px;
+    margin-bottom: 10px;
+}
+
+#mcp-bulk-results {
+    min-height: 100px;
+}
+
+.generate-alt,
+.apply-alt {
+    margin-top: 5px;
+    margin-right: 5px;
+}
+
+.apply-alt[disabled] {
+    background-color: #2ea02e;
+    border-color: #2ea02e;
+    color: white;
+}
+
+.error {
+    color: #d63638;
+    font-weight: bold;
+}
+
+.success {
+    color: #2ea02e;
+    font-weight: bold;
+}
