@@ -158,12 +158,21 @@ class WordPressMCPMetaServer {
 
         switch (name) {
           case "generate_meta_description":
+            if (!args || typeof args !== 'object') {
+              throw new McpError(ErrorCode.InvalidParams, "Invalid arguments");
+            }
             return await this.generateMetaDescription(args as MetaDescriptionRequest);
             
           case "analyze_content":
+            if (!args || typeof args !== 'object') {
+              throw new McpError(ErrorCode.InvalidParams, "Invalid arguments");
+            }
             return await this.analyzeContent(args as { content: string; title: string });
             
           case "batch_generate":
+            if (!args || typeof args !== 'object') {
+              throw new McpError(ErrorCode.InvalidParams, "Invalid arguments");
+            }
             return await this.batchGenerate(args as { posts: any[]; tone?: string });
             
           default:
@@ -209,7 +218,7 @@ class WordPressMCPMetaServer {
       content: contentPreview,
       keywords,
       maxLength,
-      tone
+      tone: tone as 'professional' | 'casual' | 'technical' | 'marketing'
     });
 
     const suggestions = this.getOptimizationSuggestions(metaDescription, keywords, analysis);
@@ -274,17 +283,20 @@ class WordPressMCPMetaServer {
           content: post.content,
           keywords: post.keywords || [],
           maxLength: 155,
-          tone
+          tone: tone as 'professional' | 'casual' | 'technical' | 'marketing'
         });
         
-        const parsed = JSON.parse(result.content[0].text);
-        results.push({
-          id: post.id,
-          success: true,
-          metaDescription: parsed.metaDescription,
-          length: parsed.length,
-          suggestions: parsed.suggestions
-        });
+        const textContent = result.content[0];
+        if (textContent && textContent.text) {
+          const parsed = JSON.parse(textContent.text);
+          results.push({
+            id: post.id,
+            success: true,
+            metaDescription: parsed.metaDescription,
+            length: parsed.length,
+            suggestions: parsed.suggestions
+          });
+        }
       } catch (error) {
         results.push({
           id: post.id,
@@ -410,16 +422,16 @@ class WordPressMCPMetaServer {
     // Generate based on content type and tone
     switch (tone) {
       case 'marketing':
-        description = this.createMarketingDescription(title, contentSummary, keywordPhrase, maxLength!);
+        description = this.createMarketingDescription(title, contentSummary, keywordPhrase || '', maxLength!);
         break;
       case 'technical':
-        description = this.createTechnicalDescription(title, contentSummary, keywordPhrase, maxLength!);
+        description = this.createTechnicalDescription(title, contentSummary, keywordPhrase || '', maxLength!);
         break;
       case 'casual':
-        description = this.createCasualDescription(title, contentSummary, keywordPhrase, maxLength!);
+        description = this.createCasualDescription(title, contentSummary, keywordPhrase || '', maxLength!);
         break;
       default:
-        description = this.createProfessionalDescription(title, contentSummary, keywordPhrase, maxLength!);
+        description = this.createProfessionalDescription(title, contentSummary, keywordPhrase || '', maxLength!);
     }
     
     // Ensure length constraint
@@ -434,7 +446,10 @@ class WordPressMCPMetaServer {
     const sentences = content.split(/[.!?]+/).filter(s => s.trim().length > 20);
     if (sentences.length === 0) return content.substring(0, maxLength);
     
-    let summary = sentences[0].trim();
+    const firstSentence = sentences[0];
+    if (!firstSentence) return content.substring(0, maxLength);
+    
+    let summary = firstSentence.trim();
     if (summary.length > maxLength) {
       summary = summary.substring(0, maxLength - 3) + '...';
     }
@@ -528,7 +543,6 @@ class WordPressMCPMetaServer {
     
     // Log to stderr for status (stdout is used for MCP communication)
     console.error("WordPress Meta Description Generator MCP server running on stdio");
-    console.error(`Server capabilities: ${JSON.stringify(this.server.getCapabilities())}`);
   }
 }
 
