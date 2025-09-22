@@ -3,7 +3,7 @@
  * Plugin Name: MCP Meta Description Generator
  * Plugin URI: https://github.com/mprattmd/wordpress-mcp-meta-generator
  * Description: Generates meta descriptions using MCP server integration for Yoast SEO
- * Version: 1.0.1
+ * Version: 1.1.0
  * Author: mprattmd
  * License: GPL v2 or later
  * Text Domain: mcp-meta-generator
@@ -17,7 +17,7 @@ if (!defined('ABSPATH')) {
 // Define plugin constants
 define('MCP_META_PLUGIN_PATH', plugin_dir_path(__FILE__));
 define('MCP_META_PLUGIN_URL', plugin_dir_url(__FILE__));
-define('MCP_META_VERSION', '1.0.1');
+define('MCP_META_VERSION', '1.1.0');
 
 class MCPMetaDescriptionGenerator {
     
@@ -40,6 +40,135 @@ class MCPMetaDescriptionGenerator {
         // Add meta box for manual generation
         add_action('add_meta_boxes', array($this, 'add_meta_box'));
         add_action('save_post', array($this, 'save_meta_box'));
+    }
+    
+    /**
+     * Get clean, user-facing content from a post
+     * This fetches the actual rendered page, not raw content with shortcodes
+     */
+    private function get_rendered_content($post) {
+        // For published posts, fetch the actual rendered page
+        if ($post->post_status === 'publish') {
+            $permalink = get_permalink($post->ID);
+            
+            // Fetch the rendered page
+            $response = wp_remote_get($permalink, array(
+                'timeout' => 15,
+                'sslverify' => false,
+                'headers' => array(
+                    'User-Agent' => 'WordPress-MCP-Meta-Generator/1.1.0'
+                )
+            ));
+            
+            if (!is_wp_error($response) && wp_remote_retrieve_response_code($response) === 200) {
+                $html = wp_remote_retrieve_body($response);
+                
+                // Extract main content from HTML
+                $content = $this->extract_main_content_from_html($html);
+                
+                if (!empty($content)) {
+                    return $content;
+                }
+            }
+        }
+        
+        // Fallback: process the post content manually
+        return $this->process_post_content($post);
+    }
+    
+    /**
+     * Extract main content from HTML, ignoring headers, footers, sidebars
+     */
+    private function extract_main_content_from_html($html) {
+        // Try to find main content area
+        $main_patterns = array(
+            '/<main[^>]*>(.*?)<\/main>/is',
+            '/<article[^>]*>(.*?)<\/article>/is',
+            '/<div[^>]*class=["\']([^"\']*\s)?entry-content(\s[^"\']*)?"[^>]*>(.*?)<\/div>/is',
+            '/<div[^>]*class=["\']([^"\']*\s)?post-content(\s[^"\']*)?"[^>]*>(.*?)<\/div>/is',
+            '/<div[^>]*class=["\']([^"\']*\s)?content(\s[^"\']*)?"[^>]*>(.*?)<\/div>/is',
+        );
+        
+        $content = '';
+        
+        foreach ($main_patterns as $pattern) {
+            if (preg_match($pattern, $html, $matches)) {
+                $content = end($matches); // Get the last captured group (the content)
+                break;
+            }
+        }
+        
+        // If no main content found, use body
+        if (empty($content)) {
+            if (preg_match('/<body[^>]*>(.*?)<\/body>/is', $html, $matches)) {
+                $content = $matches[1];
+            } else {
+                $content = $html;
+            }
+        }
+        
+        // Remove scripts, styles, and other non-content elements
+        $content = preg_replace('/<script[^>]*>.*?<\/script>/is', '', $content);
+        $content = preg_replace('/<style[^>]*>.*?<\/style>/is', '', $content);
+        $content = preg_replace('/<nav[^>]*>.*?<\/nav>/is', '', $content);
+        $content = preg_replace('/<header[^>]*>.*?<\/header>/is', '', $content);
+        $content = preg_replace('/<footer[^>]*>.*?<\/footer>/is', '', $content);
+        $content = preg_replace('/<aside[^>]*>.*?<\/aside>/is', '', $content);
+        $content = preg_replace('/<!--.*?-->/is', '', $content);
+        
+        // Strip remaining HTML tags
+        $content = wp_strip_all_tags($content);
+        
+        // Clean up whitespace
+        $content = preg_replace('/\s+/', ' ', $content);
+        $content = trim($content);
+        
+        return $content;
+    }
+    
+    /**
+     * Process post content manually (for drafts or when rendered fetch fails)
+     */
+    private function process_post_content($post) {
+        $content = $post->post_content;
+        
+        // Apply WordPress content filters (processes shortcodes, etc)
+        $content = apply_filters('the_content', $content);
+        
+        // For Gutenberg blocks, extract text content
+        if (has_blocks($content)) {
+            $blocks = parse_blocks($content);
+            $text_content = '';
+            
+            foreach ($blocks as $block) {
+                if (!empty($block['blockName'])) {
+                    // Extract inner HTML from blocks
+                    if (!empty($block['innerHTML'])) {
+                        $text_content .= ' ' . wp_strip_all_tags($block['innerHTML']);
+                    }
+                    
+                    // Recursively process inner blocks
+                    if (!empty($block['innerBlocks'])) {
+                        foreach ($block['innerBlocks'] as $inner_block) {
+                            if (!empty($inner_block['innerHTML'])) {
+                                $text_content .= ' ' . wp_strip_all_tags($inner_block['innerHTML']);
+                            }
+                        }
+                    }
+                }
+            }
+            
+            $content = $text_content;
+        } else {
+            // Strip HTML tags from processed content
+            $content = wp_strip_all_tags($content);
+        }
+        
+        // Clean up whitespace
+        $content = preg_replace('/\s+/', ' ', $content);
+        $content = trim($content);
+        
+        return $content;
     }
     
     public function init() {
@@ -89,6 +218,14 @@ class MCPMetaDescriptionGenerator {
             'default_tone',
             'Default Tone',
             array($this, 'default_tone_callback'),
+            'mcp-meta-generator',
+            'mcp_meta_main'
+        );
+        
+        add_settings_field(
+            'use_rendered_content',
+            'Content Source',
+            array($this, 'use_rendered_content_callback'),
             'mcp-meta-generator',
             'mcp_meta_main'
         );
@@ -145,6 +282,7 @@ class MCPMetaDescriptionGenerator {
         wp_nonce_field('mcp_meta_box', 'mcp_meta_nonce');
         
         $current_meta = get_post_meta($post->ID, '_yoast_wpseo_metadesc', true);
+        $use_rendered = !empty($this->options['use_rendered_content']);
         
         echo '<div id="mcp-meta-generator">';
         
@@ -153,6 +291,10 @@ class MCPMetaDescriptionGenerator {
         echo '<span class="mcp-status-dot"></span>';
         echo '<span class="mcp-status-text">Checking connection...</span>';
         echo '</div>';
+        
+        if ($use_rendered && $post->post_status !== 'publish') {
+            echo '<div class="notice notice-warning inline"><p>Note: This post must be published to analyze rendered content. Using raw content for now.</p></div>';
+        }
         
         echo '<p><strong>Current Meta Description:</strong></p>';
         echo '<textarea readonly style="width:100%; height:60px;">' . esc_textarea($current_meta) . '</textarea>';
@@ -212,7 +354,13 @@ class MCPMetaDescriptionGenerator {
             wp_send_json_error('Post not found');
         }
         
-        $content = $post->post_content;
+        // Use rendered content if option is enabled
+        if (!empty($this->options['use_rendered_content'])) {
+            $content = $this->get_rendered_content($post);
+        } else {
+            $content = $this->process_post_content($post);
+        }
+        
         $title = $post->post_title;
         $keywords = $this->extract_keywords_from_post($post);
         
@@ -243,9 +391,16 @@ class MCPMetaDescriptionGenerator {
             wp_send_json_error('Post not found');
         }
         
+        // Use rendered content if option is enabled
+        if (!empty($this->options['use_rendered_content'])) {
+            $content = $this->get_rendered_content($post);
+        } else {
+            $content = $this->process_post_content($post);
+        }
+        
         try {
             $result = $this->call_mcp_server('analyze_content', array(
-                'content' => $post->post_content,
+                'content' => $content,
                 'title' => $post->post_title
             ));
             
@@ -272,10 +427,17 @@ class MCPMetaDescriptionGenerator {
         foreach ($post_ids as $post_id) {
             $post = get_post($post_id);
             if ($post) {
+                // Use rendered content if option is enabled
+                if (!empty($this->options['use_rendered_content'])) {
+                    $content = $this->get_rendered_content($post);
+                } else {
+                    $content = $this->process_post_content($post);
+                }
+                
                 $posts_data[] = array(
                     'id' => strval($post_id),
                     'title' => $post->post_title,
-                    'content' => $post->post_content,
+                    'content' => $content,
                     'keywords' => $this->extract_keywords_from_post($post)
                 );
             }
@@ -305,7 +467,7 @@ class MCPMetaDescriptionGenerator {
         $response = wp_remote_get($health_url, array(
             'timeout' => 10,
             'headers' => array(
-                'User-Agent' => 'WordPress-MCP-Meta-Generator/1.0.1'
+                'User-Agent' => 'WordPress-MCP-Meta-Generator/1.1.0'
             )
         ));
         
@@ -350,7 +512,7 @@ class MCPMetaDescriptionGenerator {
         $response = wp_remote_post($api_url, array(
             'headers' => array(
                 'Content-Type' => 'application/json',
-                'User-Agent' => 'WordPress-MCP-Meta-Generator/1.0.1',
+                'User-Agent' => 'WordPress-MCP-Meta-Generator/1.1.0',
                 'X-API-Key' => $api_key
             ),
             'body' => $request_body,
@@ -409,6 +571,7 @@ class MCPMetaDescriptionGenerator {
             'mcp_server_url' => '',
             'mcp_api_key' => '',
             'default_tone' => 'professional',
+            'use_rendered_content' => true,
             'auto_generate' => false
         );
     }
@@ -419,6 +582,7 @@ class MCPMetaDescriptionGenerator {
         $sanitized['mcp_api_key'] = sanitize_text_field($input['mcp_api_key']);
         $sanitized['default_tone'] = in_array($input['default_tone'], array('professional', 'casual', 'technical', 'marketing')) 
             ? $input['default_tone'] : 'professional';
+        $sanitized['use_rendered_content'] = !empty($input['use_rendered_content']);
         $sanitized['auto_generate'] = !empty($input['auto_generate']);
         
         return $sanitized;
@@ -460,6 +624,10 @@ class MCPMetaDescriptionGenerator {
                     <li><code>https://your-app.up.railway.app</code> (Railway)</li>
                     <li><code>https://your-app.vercel.app</code> (Vercel)</li>
                 </ul>
+                
+                <h3>Content Source:</h3>
+                <p><strong>Rendered Content (Recommended):</strong> Analyzes the actual published page as users see it, without page builder markup.</p>
+                <p><strong>Raw Content:</strong> Uses the post content directly from the database, may include shortcodes and page builder elements.</p>
             </div>
         </div>
         
@@ -526,6 +694,15 @@ class MCPMetaDescriptionGenerator {
         }
         echo '</select>';
         echo '<p class="description">Default writing style for meta descriptions</p>';
+    }
+    
+    public function use_rendered_content_callback() {
+        printf(
+            '<input type="checkbox" id="use_rendered_content" name="mcp_meta_options[use_rendered_content]" value="1" %s />',
+            checked(1, $this->options['use_rendered_content'], false)
+        );
+        echo '<label for="use_rendered_content">Use rendered page content (recommended - analyzes actual user-facing page without page builder markup)</label>';
+        echo '<p class="description">When enabled, analyzes the published page HTML. When disabled, uses raw post content which may include shortcodes and page builder elements.</p>';
     }
     
     public function auto_generate_callback() {
